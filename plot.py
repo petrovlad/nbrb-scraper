@@ -12,7 +12,7 @@ def main():
         stats = list(stats_by_key)
         x = [s['date'] for s in stats]
         y = [s['currency_course'] for s in stats]
-        plt.plot(x, y, label=f"{stats[0]['currency_name']} ({stats[0]['currency_amount']})")
+        plt.plot(x, y, label=f"{stats[0]['currency_name']} ({stats[0]['currency_amount']} {stats[0]['currency_abbreviation']})")
     plt.legend(loc='upper right')
     plt.show()
 

@@ -9,7 +9,7 @@ from requests import Response
 from database import MySQLDB
 
 # CONSTS
-SCRAPE_SIZE = 60  # days before
+SCRAPE_SIZE = 30  # days before
 BASE_URL = 'https://www.nbrb.by/statistics/rates/ratesdaily.asp'
 BASE_HEADERS = {
     'Accept': '*/*',
@@ -31,7 +31,7 @@ BASE_HEADERS = {
 }
 # LOG CONFIG
 log = logging.getLogger('scraper')
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
@@ -51,22 +51,25 @@ def execute_target_request(target_date: date) -> Response:
     return resp
 
 
-def parse_currency_info(soup: BeautifulSoup) -> (str, str, float):
+def parse_course_info(soup: BeautifulSoup) -> (str, str, float, float):
     cur_name = soup.find('td', class_='curName').find('div').find('span').text
-    cur_amount = soup.find('td', class_='curAmount').text.replace(',', '.')
+    cur_abrv_amount = soup.find('td', class_='curAmount').text.replace(',', '.').split(' ')
+    cur_amount = float(cur_abrv_amount[0])
+    cur_abrv = cur_abrv_amount[1]
     cur_course = float(soup.find('td', class_='curCours').find('div').text.replace(',', '.'))
-    return cur_name, cur_amount, cur_course
+    return cur_name, cur_abrv, cur_amount, cur_course
 
 
-def parse_currency_infos(text: str) -> List[dict]:
+def parse_course_infos(text: str) -> List[dict]:
     ret = list()
     currencies_soup = (BeautifulSoup(text, 'html.parser')
                        .find('tbody')
                        .findChildren('tr'))
     for currency_soup in currencies_soup:
-        cur_name, cur_amount, cur_course = parse_currency_info(currency_soup)
+        cur_name, cur_abrv, cur_amount, cur_course = parse_course_info(currency_soup)
         ret.append({
             'currency_name': cur_name,
+            'currency_abbreviation': cur_abrv,
             'currency_amount': cur_amount,
             'currency_course': cur_course
         })
@@ -81,18 +84,21 @@ def main():
     start_date = end_date - timedelta(days=SCRAPE_SIZE)
     for _date in daterange(start_date, end_date):
         resp = execute_target_request(_date)
-        currs_list = parse_currency_infos(resp.text)
-        for curr in currs_list:
-            cur_name = curr['currency_name']
-            cur_amount = curr['currency_amount']
-            cur_course = curr['currency_course']
+        course_list = parse_course_infos(resp.text)
+        for course in course_list:
+            cur_name = course['currency_name']
+            cur_abrv = course['currency_abbreviation']
+            cur_amount = course['currency_amount']
+            cur_course = course['currency_course']
             log.debug(f'{_date}-{cur_name}-{cur_amount}-{cur_course}')
-            database.add_currency_stat(
+            database.add_course_stat(
                 _date,
                 cur_name,
+                cur_abrv,
                 cur_amount,
                 cur_course,
             )
+        log.info(f'Fetched date {_date}')
 
 
 if __name__ == '__main__':

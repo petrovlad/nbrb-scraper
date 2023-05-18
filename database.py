@@ -23,12 +23,8 @@ class MySQLDB:
 
     def clear_stats(self):
         try:
-            with connect(
-                    host=self.host,
-                    user=self.user,
-                    password=self.password
-            ) as connection:
-                self.execute_sql_code(f'truncate table {self.db_name}.currency_stat', None)
+            self.execute_sql_code(f'truncate table {self.db_name}.course_stat', None)
+            self.execute_sql_code(f'truncate table {self.db_name}.currency', None)
         except Error as e:
             print(e)
 
@@ -41,12 +37,22 @@ class MySQLDB:
                     password=self.password
             ) as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute(f'select stat_id, stat_date, curr_name, curr_amount, curr_course from {self.db_name}.currency_stat')
-                    for (stat_id, stat_date, curr_name, curr_amount, curr_course) in cursor:
+                    cursor.execute(f"""
+                    select cs.stat_id,
+                           cs.stat_date,
+                           cr.full_name,
+                           cr.abbreviation,
+                           cs.curr_amount, 
+                           cs.curr_course
+                    from {self.db_name}.course_stat cs
+                        join {self.db_name}.currency cr on cs.curr_id = cr.id  
+                    """)
+                    for (stat_id, stat_date, curr_name, curr_abbrv, curr_amount, curr_course) in cursor:
                         resp.append({
                             'id': stat_id,
                             'date': stat_date,
                             'currency_name': curr_name,
+                            'currency_abbreviation': curr_abbrv,
                             'currency_amount': curr_amount,
                             'currency_course': curr_course
                         })
@@ -68,11 +74,36 @@ class MySQLDB:
         except Error as e:
             print(e)
 
-    def add_currency_stat(self, date, currency_name, currency_amount, currency_course):
+    def add_course_stat(self,
+                        date,
+                        currency_name: str,
+                        currency_abbreviation: str,
+                        currency_amount: float,
+                        currency_course: float):
+        with connect(
+                host=self.host,
+                user=self.user,
+                password=self.password
+        ) as connection:
+            with connection.cursor() as cursor:
+                existing_curr_query = f"""
+                    select id from {self.db_name}.currency where abbreviation = '{currency_abbreviation}' limit 1              
+                """
+                cursor.execute(existing_curr_query)
+                ret = cursor.fetchall()
+                existing_curr_id = None if not ret else ret[0][0]
 
-        insert_stat_query = f"""
-            insert into {self.db_name}.currency_stat (stat_date, curr_name, curr_amount, curr_course)
-            values
-                (%s, %s, %s, %s)
-        """
-        self.execute_sql_code(insert_stat_query, (date, currency_name, currency_amount, currency_course))
+                insert_course_query = f"""
+                    insert into {self.db_name}.currency (full_name, abbreviation)
+                    values (%s, %s) 
+                    on duplicate key update full_name = full_name
+                """
+                cursor.execute(insert_course_query, (currency_name, currency_abbreviation))
+
+                insert_stat_query = f"""
+                    insert into {self.db_name}.course_stat (stat_date, curr_id, curr_amount, curr_course)
+                    values
+                        (%s, coalesce(%s, last_insert_id()), %s, %s)
+                """
+                cursor.execute(insert_stat_query, (date, existing_curr_id, currency_amount, currency_course))
+                connection.commit()
