@@ -7,13 +7,13 @@ class MySQLDB:
         self.user = user
         self.password = password
         self.db_name = db_name
-    
+
     def execute_sql_code(self, sql_code, tuple):
         try:
             with connect(
-                host=self.host,
-                user=self.user,
-                password=self.password
+                    host=self.host,
+                    user=self.user,
+                    password=self.password
             ) as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(sql_code, tuple)
@@ -24,20 +24,42 @@ class MySQLDB:
     def clear_stats(self):
         try:
             with connect(
-                host=self.host,
-                user=self.user,
-                password=self.password
+                    host=self.host,
+                    user=self.user,
+                    password=self.password
             ) as connection:
                 self.execute_sql_code('truncate table {self.db_name}.currency_stat', None)
         except Error as e:
             print(e)
 
+    def get_all(self):
+        resp = []
+        try:
+            with connect(
+                    host=self.host,
+                    user=self.user,
+                    password=self.password
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(f'select stat_id, stat_date, curr_name, curr_amount, curr_course from {self.db_name}.currency_stat')
+                    for (stat_id, stat_date, curr_name, curr_amount, curr_course) in cursor:
+                        resp.append({
+                            'id': stat_id,
+                            'date': stat_date,
+                            'currency_name': curr_name,
+                            'currency_amount': curr_amount,
+                            'currency_course': curr_course
+                        })
+        except Error as e:
+            print(e)
+        return resp
+
     def show_table(self, table_name):
         try:
             with connect(
-                host=self.host,
-                user=self.user,
-                password=self.password
+                    host=self.host,
+                    user=self.user,
+                    password=self.password
             ) as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(f'select * from {self.db_name}.{table_name}')
@@ -47,7 +69,7 @@ class MySQLDB:
             print(e)
 
     def add_currency_stat(self, date, currency_name, currency_amount, currency_course):
-    
+
         insert_stat_query = f"""
             insert into {self.db_name}.currency_stat (stat_date, curr_name, curr_amount, curr_course)
             values
