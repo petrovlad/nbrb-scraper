@@ -1,0 +1,11 @@
+services:
+  postgre:
+    container_name: mysql-scraper
+    image: mysql:8.0
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker-entrypoint:/docker-entrypoint-initdb.d

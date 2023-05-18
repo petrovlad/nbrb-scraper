@@ -4,6 +4,8 @@ from datetime import date, timedelta
 import requests
 from bs4 import BeautifulSoup
 
+from database import MySQLDB
+
 # CONSTS
 SCRAPE_SIZE = 60  # days before
 BASE_URL = 'https://www.nbrb.by/statistics/rates/ratesdaily.asp'
@@ -41,19 +43,23 @@ def daterange(start_date: date, end_date: date):
 
 
 def main():
-    start_date = date.today()
-    end_date = start_date - timedelta(days=SCRAPE_SIZE)
+    database = MySQLDB('localhost', 'aboba', 'aboba', 'nbrb_scraper')
+    database.clear_stats()
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=SCRAPE_SIZE)
     for _date in daterange(start_date, end_date):
         raw_data = f'Date={_date.year}-{_date.month}-{_date.day}&Type=Day&X-Requested-With=XMLHttpRequest'
         resp = requests.get(BASE_URL, headers=BASE_HEADERS, data=raw_data)
         log.debug(f'{resp.status_code=}, {resp.text=}')
         soup = BeautifulSoup(resp.text, 'html.parser')
-        currs_list = soup.findChildren('tbody')
+        currs_list = soup.find('tbody').findChildren('tr')
         for curr in currs_list:
             cur_name = curr.find('td', class_='curName').find('div').find('span').text
-            cur_amount = curr.find('td', class_='curAmount').text
-            cur_course = curr.find('td', class_='curCours').find('div').text
-            print(f'{_date}-{cur_name}-{cur_amount}-{cur_course}')
+            cur_amount = curr.find('td', class_='curAmount').text.replace(',', '.')
+            cur_course = curr.find('td', class_='curCours').find('div').text.replace(',', '.')
+            log.debug(f'{_date}-{cur_name}-{cur_amount}-{cur_course}')
+            database.add_currency_stat(_date, cur_name, cur_amount, cur_course)
 
 
 if __name__ == '__main__':
