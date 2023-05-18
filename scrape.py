@@ -1,8 +1,10 @@
 import logging
 from datetime import date, timedelta
+from typing import List
 
 import requests
 from bs4 import BeautifulSoup
+from requests import Response
 
 from database import MySQLDB
 
@@ -42,6 +44,35 @@ def daterange(start_date: date, end_date: date):
         yield start_date + timedelta(n)
 
 
+def execute_target_request(target_date: date) -> Response:
+    raw_data = f'Date={target_date.year}-{target_date.month}-{target_date.day}&Type=Day&X-Requested-With=XMLHttpRequest'
+    resp = requests.get(BASE_URL, headers=BASE_HEADERS, data=raw_data)
+    log.debug(f'{resp.status_code=}, {resp.text=}')
+    return resp
+
+
+def parse_currency_info(soup: BeautifulSoup) -> (str, str, float):
+    cur_name = soup.find('td', class_='curName').find('div').find('span').text
+    cur_amount = soup.find('td', class_='curAmount').text.replace(',', '.')
+    cur_course = float(soup.find('td', class_='curCours').find('div').text.replace(',', '.'))
+    return cur_name, cur_amount, cur_course
+
+
+def parse_currency_infos(text: str) -> List[dict]:
+    ret = list()
+    currencies_soup = (BeautifulSoup(text, 'html.parser')
+                       .find('tbody')
+                       .findChildren('tr'))
+    for currency_soup in currencies_soup:
+        cur_name, cur_amount, cur_course = parse_currency_info(currency_soup)
+        ret.append({
+            'currency_name': cur_name,
+            'currency_amount': cur_amount,
+            'currency_course': cur_course
+        })
+    return ret
+
+
 def main():
     database = MySQLDB('localhost', 'aboba', 'aboba', 'nbrb_scraper')
     database.clear_stats()
@@ -49,17 +80,19 @@ def main():
     end_date = date.today()
     start_date = end_date - timedelta(days=SCRAPE_SIZE)
     for _date in daterange(start_date, end_date):
-        raw_data = f'Date={_date.year}-{_date.month}-{_date.day}&Type=Day&X-Requested-With=XMLHttpRequest'
-        resp = requests.get(BASE_URL, headers=BASE_HEADERS, data=raw_data)
-        log.debug(f'{resp.status_code=}, {resp.text=}')
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        currs_list = soup.find('tbody').findChildren('tr')
+        resp = execute_target_request(_date)
+        currs_list = parse_currency_infos(resp.text)
         for curr in currs_list:
-            cur_name = curr.find('td', class_='curName').find('div').find('span').text
-            cur_amount = curr.find('td', class_='curAmount').text.replace(',', '.')
-            cur_course = curr.find('td', class_='curCours').find('div').text.replace(',', '.')
+            cur_name = curr['currency_name']
+            cur_amount = curr['currency_amount']
+            cur_course = curr['currency_course']
             log.debug(f'{_date}-{cur_name}-{cur_amount}-{cur_course}')
-            database.add_currency_stat(_date, cur_name, cur_amount, cur_course)
+            database.add_currency_stat(
+                _date,
+                cur_name,
+                cur_amount,
+                cur_course,
+            )
 
 
 if __name__ == '__main__':
