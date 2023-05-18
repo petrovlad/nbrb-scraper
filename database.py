@@ -28,7 +28,7 @@ class MySQLDB:
                     user=self.user,
                     password=self.password
             ) as connection:
-                self.execute_sql_code('truncate table {self.db_name}.currency_stat', None)
+                self.execute_sql_code(f'truncate table {self.db_name}.currency_stat', None)
         except Error as e:
             print(e)
 
